@@ -1,0 +1,369 @@
+# Instalación de las librerías necesarias
+!pip install dash jupyter-dash plotly pandas scikit-learn
+
+# Importación de las librerías necesarias
+from jupyter_dash import JupyterDash
+from dash import html, dcc, callback_context
+from dash.dependencies import Input, Output, State
+import plotly.express as px
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+
+# Simular algunos datos
+data = {
+    'Region': ['Norte', 'Sur', 'Este', 'Oeste', 'Occidente'],
+    'Informalidad': [60, 50, 70, 65, 45],
+    'Acceso a Tecnología': [30, 40, 35, 20, 45],
+    'Población': [5000, 4000, 6000, 4500, 5500]
+}
+df = pd.DataFrame(data)
+
+# División de datos para el modelo predictivo
+X = df[['Informalidad']]
+y = df['Acceso a Tecnología']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+# Función para el modelo predictivo
+def predict_access(informality):
+    access_prediction = model.predict([[informality]])
+    return access_prediction[0]
+
+# Predicciones para el histograma
+informality_values = np.linspace(df['Informalidad'].min(), df['Informalidad'].max(), 100)
+predicted_values = [predict_access(informality) for informality in informality_values]
+
+# Crear un gráfico de dispersión
+scatter_fig = px.scatter(df, x='Informalidad', y='Acceso a Tecnología', color='Region',
+                 size='Población', hover_name='Region', size_max=60, title='Relación entre Informalidad y Acceso a Tecnología')
+
+# Crear un gráfico de barras
+bar_fig = px.bar(df, x='Region', y='Informalidad', title='Nivel de Informalidad por Región')
+
+# Crear un histograma de las predicciones
+hist_fig = px.histogram(x=predicted_values, nbins=30, title='Histograma de Predicciones de Acceso a Tecnología')
+
+# Iniciar la aplicación Dash
+app = JupyterDash(__name__)
+
+
+custom_css = '''
+.navbar {
+    background-color: #343a40 !important;
+}
+
+.navbar a.nav-item {
+    color: #ffffff !important;
+    margin-right: 10px;
+}
+
+.navbar a.nav-item:hover {
+    color: #ffffff !important;
+}
+
+.container {
+    padding: 20px;
+}
+
+.card {
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.card-header {
+    background-color: #007bff;
+    color: #ffffff;
+    padding: 10px;
+    border-radius: 5px 5px 0 0;
+}
+
+.card-body {
+    padding: 20px;
+}
+'''
+app.css.append_css({'external_url': 'https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css'})
+app.css.append_css({'external_url': custom_css})
+
+
+app.layout = html.Div([
+    html.Nav([
+        html.Div([
+            html.A('Inicio', href='#inicio', className='nav-item'),
+            html.A('Gráfico de Dispersión', href='#scatter', className='nav-item'),
+            html.A('Gráfico de Barras', href='#bar', className='nav-item'),
+            html.A('Histograma de Predicciones', href='#histogram', className='nav-item'),
+            html.Button('Cerrar Servidor', id='close-button', n_clicks=0, className='nav-item btn btn-danger')
+        ], className='navbar navbar-expand-lg navbar-dark bg-primary')
+    ]),
+    html.Div([
+        html.H2('Dashboard para Transición del Sector Informal al Formal en Colombia', id='inicio', className='mt-4'),
+        dcc.Markdown("Este Dashboard muestra la relación entre la informalidad y el acceso a la tecnología en diferentes regiones."),
+        html.Div([
+            html.Div([
+                html.Div([
+                    html.Div([
+                        html.H4('Gráfico de Dispersión', className='card-header'),
+                        dcc.Graph(figure=scatter_fig, id='scatter-plot', className='card-body')
+                    ], className='card')
+                ], className='col-md-6')
+            ], className='row'),
+            html.Div([
+                html.Div([
+                    html.Div([
+                        html.H4('Gráfico de Barras', className='card-header'),
+                        dcc.Graph(figure=bar_fig, id='bar-chart', className='card-body')
+                    ], className='card')
+                ], className='col-md-6')
+            ], className='row'),
+            html.Div([
+                html.Div([
+                    html.Div([
+                        html.H4('Predicción del Acceso a Tecnología', className='card-header'),
+                        html.Div([
+                            html.Label('Ingrese el nivel de informalidad:'),
+                            dcc.Input(id='informality-input', type='number', placeholder='Ingrese el nivel de informalidad', className='form-control'),
+                            html.Button('Predecir', id='predict-button', n_clicks=0, className='btn btn-primary mt-2'),
+                            html.Div(id='prediction-output', className='mt-3')
+                        ], className='card-body')
+                    ], className='card')
+                ], className='col-md-6')
+            ], className='row'),
+            html.Div([
+                html.Div([
+                    html.Div([
+                        html.H4('Histograma de Predicciones de Acceso a Tecnología', className='card-header'),
+                        dcc.Graph(figure=hist_fig, id='histogram-plot', className='card-body')
+                    ], className='card')
+                ], className='col-md-12')
+            ], id='histogram-section', className='row', style={'display': 'none'})
+        ], className='container mt-4')
+    ], className='container')
+])
+
+
+@app.callback(
+    Output('prediction-output', 'children'),
+    [Input('predict-button', 'n_clicks')],
+    [State('informality-input', 'value')]
+)
+def update_prediction(n_clicks, informality):
+    if n_clicks > 0 and informality:
+        prediction = predict_access(informality)
+        return f"Según el modelo, el nivel de acceso a tecnología estimado para un nivel de informalidad de {informality}% es de aproximadamente {prediction:.2f}%."
+
+
+@app.callback(
+    Output('histogram-section', 'style'),
+    [Input('nav-link-histogram', 'n_clicks')],
+)
+def show_histogram(n_clicks):
+    if n_clicks % 2 == 1:
+        return {'display': 'block'}
+    else:
+        return {'display': 'none'}
+
+
+@app.callback(
+    Output('close-button', 'n_clicks'),
+    [Input('close-button', 'n_clicks')]
+)
+def close_server(n_clicks):
+    if n_clicks > 0:
+        app.shutdown_server()
+
+app.run_server(mode='external', port=8050, debug=True, dev_tools_ui=False, dev_tools_props_check=False)
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn import metrics
+from matplotlib.dates import YearLocator, DateFormatter
+from google.colab import files
+import seaborn as sns
+
+#uploaded = files.upload()
+
+df = pd.DataFrame(pd.read_csv("zomato.csv"))
+
+df.describe().round()
+
+df.info()
+
+_df_3['Close'].plot(kind='hist', bins=20, title='Close')
+plt.gca().spines[['top', 'right',]].set_visible(False)
+
+def _plot_series(series, series_name, series_index=0):
+  palette = list(sns.palettes.mpl_palette('Dark2'))
+  xs = series['Date']
+  ys = series['Close']
+
+  plt.plot(xs, ys, label=series_name, color=palette[series_index % len(palette)])
+
+fig, ax = plt.subplots(figsize=(10, 5.2), layout='constrained')
+df_sorted = df.sort_values('Date', ascending=True)
+_plot_series(df_sorted, '')
+sns.despine(fig=fig, ax=ax)
+plt.xlabel('Date')
+_ = plt.ylabel('Close')
+
+def _plot_series(series, series_name, series_index=0):
+  palette = list(sns.palettes.mpl_palette('Dark2'))
+  xs = series['Date']
+  ys = series['Open']
+
+  plt.plot(xs, ys, label=series_name, color=palette[series_index % len(palette)])
+
+fig, ax = plt.subplots(figsize=(10, 5.2), layout='constrained')
+df_sorted = df.sort_values('Date', ascending=True)
+_plot_series(df_sorted, '')
+sns.despine(fig=fig, ax=ax)
+plt.xlabel('Date')
+_ = plt.ylabel('Open')
+
+plt.figure(figsize=(10,6))
+plt.scatter(df['Open'], df['Close'], c=df['Close'])
+plt.title('Gráfico de dispersión Close')
+plt.xlabel('open')
+plt.ylabel('Close')
+plt.colorbar(label='Escala')
+plt.show()
+
+df['Date'] = pd.to_datetime(df['Date'])
+
+# Creando una columna 'Years' que representa el número de años desde la fecha inicial
+df['Years'] = df['Date'].dt.year - df['Date'].dt.year.min()
+
+# Definiendo las variables independiente y dependiente
+X = df['Years'].values.reshape(-1,1)
+y = df['Close'].values.reshape(-1,1)
+
+# Dividiendo los datos en conjuntos de entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+
+# Creando y entrenando el modelo de regresión lineal
+regressor = LinearRegression()
+regressor.fit(X_train, y_train)
+
+# Haciendo predicciones para los próximos 2 años
+future_years = np.array([i for i in range(df['Years'].max()+1, df['Years'].max()+3)]).reshape(-1,1)
+future_predictions = regressor.predict(future_years)
+
+# Visualizando las predicciones
+plt.figure(figsize=(10,6))
+plt.scatter(df['Years'], df['Close'], color='blue')
+plt.plot(future_years, future_predictions, color='red', linewidth=2)
+plt.title('Predicción del precio de cierre ')
+plt.xlabel('Años desde la fecha inicial')
+plt.ylabel('Precio de cierre')
+plt.show()
+
+# Evaluación del rendimiento del modelo
+y_pred_train = regressor.predict(X_train)
+mse_train = metrics.mean_squared_error(y_train, y_pred_train)
+print("Error cuadrático medio (entrenamiento):", mse_train)
+
+y_pred_test = regressor.predict(X_test)
+mse_test = metrics.mean_squared_error(y_test, y_pred_test)
+print("Error cuadrático medio (prueba):", mse_test)
+
+r2_score_train = metrics.r2_score(y_train, y_pred_train)
+print("R-cuadrado (entrenamiento):", r2_score_train)
+
+r2_score_test = metrics.r2_score(y_test, y_pred_test)
+print("R-cuadrado (prueba):", r2_score_test)
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from google.colab import files
+
+#files.upload()
+
+# Reemplazar "ventas.csv" por la ruta a tu archivo
+data = pd.read_csv("/content/Libro1.csv", encoding_errors= "ignore")
+
+# Verificar la información del DataFrame
+print(data.info())
+
+data.describe()
+
+data['Fecha_Venta'] = pd.to_datetime(data['Fecha_Venta'])
+# Visualizar las primeras filas del DataFrame
+data.head(100)
+
+plt.figure(figsize=(10, 6))
+for producto in data['Nombre_Producto'].unique():
+    df_producto = data[data['Nombre_Producto'] == producto]
+    ventas_mensuales = df_producto.groupby(df_producto['Fecha_Venta'].dt.month)['Unidades_Vendidas'].sum()
+    plt.plot(ventas_mensuales.index, ventas_mensuales.values, label=producto)
+
+plt.title('Tendencias de ventas mensuales por producto')
+plt.xlabel('Mes')
+plt.ylabel('Unidades Vendidas')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Histograma de distribución de ventas de todos los productos
+plt.figure(figsize=(10, 6))
+plt.hist(data['Unidades_Vendidas'], bins=10, color='skyblue', edgecolor='black')
+plt.title('Distribución de ventas de todos los productos')
+plt.xlabel('Unidades Vendidas')
+plt.ylabel('Frecuencia')
+plt.grid(True)
+plt.show(
+
+# Gráfico de barras que compara las ventas totales anuales de los tres productos
+ventas_anuales = data.groupby([data['Nombre_Producto'], data['Fecha_Venta'].dt.year])['Unidades_Vendidas'].sum().unstack()
+ventas_anuales.plot(kind='bar', figsize=(10, 6))
+plt.title('Ventas Totales Anuales de los Productos')
+plt.xlabel('Año')
+plt.ylabel('Unidades Vendidas')
+plt.xticks(rotation=45)
+plt.legend(title='Producto')
+plt.grid(True)
+plt.show()
+
+# Distribución de Categorías (gráfico de torta)
+plt.figure(figsize=(8, 8))
+distribucion_categorias = data.groupby('Categoria')['Unidades_Vendidas'].sum()
+plt.pie(distribucion_categorias, labels=distribucion_categorias.index, autopct='%1.1f%%', startangle=140)
+plt.title('Distribución de Categorías')
+plt.axis('equal')
+plt.show()
+
+# Comparaciones Relativas (gráfico de torta)
+plt.figure(figsize=(8, 8))
+comparaciones_relativas = data.groupby('Nombre_Producto')['Unidades_Vendidas'].sum()
+plt.pie(comparaciones_relativas, labels=comparaciones_relativas.index, autopct='%1.1f%%', startangle=140)
+plt.title('Comparaciones Relativas de Ventas de Productos')
+plt.axis('equal')
+plt.show()
+
+# Composición del Total (gráfico de torta)
+plt.figure(figsize=(8, 8))
+composicion_total = data['Unidades_Vendidas'].sum()
+categorias = data.groupby('Categoria')['Unidades_Vendidas'].sum().dropna().index
+unidades_vendidas_por_categoria = [data[data['Categoria'] == categoria]['Unidades_Vendidas'].sum() for categoria in categorias]
+plt.pie(unidades_vendidas_por_categoria, labels=categorias, autopct='%1.1f%%', startangle=140)
+plt.title('Composición Total de Unidades Vendidas por Categoría')
+plt.axis('equal')
+plt.show()
+
+# Datos Parte de un Todo (gráfico de torta)
+plt.figure(figsize=(8, 8))
+datos_parte_todo = data.groupby('Marca')['Unidades_Vendidas'].sum()
+plt.pie(datos_parte_todo, labels=datos_parte_todo.index, autopct='%1.1f%%', startangle=140)
+plt.title('Datos Parte de un Todo (Unidades Vendidas por Marca)')
+plt.axis('equal')
+plt.show()
+
+
+
